@@ -9,6 +9,7 @@ use crate::app::{
     handle_user_input, reconnect_delay, reconnect_limit_reached, run_connection, should_reconnect,
     ClientState, WsEvent,
 };
+use crate::ui::{combat_target_line, meter};
 
 pub struct RoomView {
     pub title: String,
@@ -18,8 +19,16 @@ pub struct RoomView {
     pub zone_art: Option<String>,
 }
 
+#[derive(Default)]
+struct CombatView {
+    target: Option<String>,
+    hp: Option<i32>,
+    max_hp: Option<i32>,
+}
+
 pub async fn run(server_url: &str) -> Result<()> {
     let mut state = ClientState::default();
+    let mut combat = CombatView::default();
     let mut stdin = BufReader::new(tokio::io::stdin());
     let mut line = String::new();
 
@@ -44,7 +53,7 @@ pub async fn run(server_url: &str) -> Result<()> {
                             state.reconnect_attempts = 0;
                         }
                         WsEvent::Message(msg) => {
-                            if let Some(prompt) = apply_message(&mut state, msg) {
+                            if let Some(prompt) = apply_message(&mut state, &mut combat, msg) {
                                 print!("{prompt}");
                                 io::stdout().flush().ok();
                             }
@@ -116,7 +125,11 @@ pub async fn run(server_url: &str) -> Result<()> {
     }
 }
 
-fn apply_message(state: &mut ClientState, msg: ServerMessage) -> Option<String> {
+fn apply_message(
+    state: &mut ClientState,
+    combat: &mut CombatView,
+    msg: ServerMessage,
+) -> Option<String> {
     match msg {
         ServerMessage::Banner => {
             show_banner();
@@ -144,7 +157,7 @@ fn apply_message(state: &mut ClientState, msg: ServerMessage) -> Option<String> 
             None
         }
         ServerMessage::Stats { player } => {
-            show_stats(&player);
+            show_stats(&player, combat);
             None
         }
         ServerMessage::Online { players } => {
@@ -185,7 +198,23 @@ fn apply_message(state: &mut ClientState, msg: ServerMessage) -> Option<String> 
             println!("{reason}");
             None
         }
-        ServerMessage::Combat { .. } => None,
+        ServerMessage::Combat { state } => {
+            if state.in_combat {
+                combat.target = state.target.clone();
+                combat.hp = state.target_hp;
+                combat.max_hp = state.target_max_hp;
+                if let (Some(target), Some(hp), Some(max_hp)) =
+                    (&combat.target, combat.hp, combat.max_hp)
+                {
+                    println!("{}", combat_target_line(target, hp, max_hp));
+                }
+            } else {
+                combat.target = None;
+                combat.hp = None;
+                combat.max_hp = None;
+            }
+            None
+        }
     }
 }
 
@@ -230,12 +259,28 @@ fn show_room(room: &RoomView) {
     println!();
 }
 
-fn show_stats(player: &PlayerSnapshot) {
+fn show_stats(player: &PlayerSnapshot, combat: &CombatView) {
     let duel = if player.in_duel.unwrap_or(false) { " [DUEL]" } else { "" };
+    let fighting = if player.in_combat.unwrap_or(false) { " [COMBAT]" } else { "" };
     println!(
-        " Lv.{} HP {}/{} MP {}/{} {}g{}",
-        player.level, player.hp, player.max_hp, player.mp, player.max_mp, player.gold, duel
+        " Lv.{}  HP {} {}/{}  MP {} {}/{}  XP {} {}/{}  {}g{}{}",
+        player.level,
+        meter(player.hp, player.max_hp, 10),
+        player.hp,
+        player.max_hp,
+        meter(player.mp, player.max_mp, 8),
+        player.mp,
+        player.max_mp,
+        meter(player.xp, player.xp_to_level, 8),
+        player.xp,
+        player.xp_to_level,
+        player.gold,
+        duel,
+        fighting,
     );
+    if let (Some(target), Some(hp), Some(max_hp)) = (&combat.target, combat.hp, combat.max_hp) {
+        println!(" {}", combat_target_line(target, hp, max_hp));
+    }
 }
 
 fn show_online(players: &[OnlinePlayer]) {
@@ -252,5 +297,5 @@ fn show_online(players: &[OnlinePlayer]) {
 }
 
 fn show_class_select() {
-    println!("\nChoose class: warrior | mage | rogue\n");
+    println!("\n{}\n", crate::ui::class_select_text());
 }

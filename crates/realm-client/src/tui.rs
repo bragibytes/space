@@ -14,7 +14,6 @@ use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph, Wrap};
 use ratatui::Frame;
 use ratatui::Terminal;
 use realm_core::minimap::render_minimap_ascii;
-use realm_core::types::CLASSES;
 use realm_protocol::{ClassName, MinimapCell, OnlinePlayer, OutputStyle, PlayerSnapshot, ServerMessage};
 use tokio::sync::mpsc;
 
@@ -22,6 +21,7 @@ use crate::app::{
     handle_user_input, reconnect_delay, run_connection, should_reconnect,
     AuthStep, ClientState, WsEvent,
 };
+use crate::ui::{class_select_text, combat_target_line, meter};
 
 struct RoomView {
     title: String,
@@ -43,6 +43,9 @@ struct TuiState {
     flash_until: Option<Instant>,
     flash_color: Color,
     in_combat: bool,
+    combat_target: Option<String>,
+    combat_target_hp: Option<i32>,
+    combat_target_max_hp: Option<i32>,
     status_message: String,
 }
 
@@ -59,6 +62,9 @@ impl Default for TuiState {
             flash_until: None,
             flash_color: Color::Cyan,
             in_combat: false,
+            combat_target: None,
+            combat_target_hp: None,
+            combat_target_max_hp: None,
             status_message: String::new(),
         }
     }
@@ -273,7 +279,9 @@ fn apply_message(state: &mut TuiState, msg: ServerMessage) {
             };
             state.flash_until = Some(Instant::now() + Duration::from_millis(120));
         }
-        ServerMessage::Bell => {}
+        ServerMessage::Bell => {
+            let _ = crossterm::execute!(io::stdout(), crossterm::style::Print("\x07"));
+        }
         ServerMessage::Ticker { text } => {
             state.ticker = text;
         }
@@ -301,7 +309,18 @@ fn apply_message(state: &mut TuiState, msg: ServerMessage) {
             state.client.intentional_disconnect = true;
             append_log(state, reason, OutputStyle::System);
         }
-        ServerMessage::Combat { .. } => {}
+        ServerMessage::Combat { state: combat } => {
+            state.in_combat = combat.in_combat;
+            if combat.in_combat {
+                state.combat_target = combat.target.clone();
+                state.combat_target_hp = combat.target_hp;
+                state.combat_target_max_hp = combat.target_max_hp;
+            } else {
+                state.combat_target = None;
+                state.combat_target_hp = None;
+                state.combat_target_max_hp = None;
+            }
+        }
     }
 }
 
@@ -317,7 +336,7 @@ fn render_ui(f: &mut Frame, state: &TuiState) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),
+            Constraint::Length(4),
             Constraint::Min(0),
             Constraint::Length(3),
         ])
@@ -362,16 +381,19 @@ fn render_header(f: &mut Frame, area: Rect, state: &TuiState) {
             tags.push(format!("<{guild}>"));
         }
         format!(
-            "{}  Lv.{} {}  {}g  {}  HP {}/{}  MP {}/{}  XP {}/{}",
+            "{}  Lv.{} {}  {}g  {}\nHP {} {}/{}  MP {} {}/{}  XP {} {}/{}",
             p.username,
             p.level,
             cls,
             p.gold,
             tags.join(" "),
+            meter(p.hp, p.max_hp, 12),
             p.hp,
             p.max_hp,
+            meter(p.mp, p.max_mp, 8),
             p.mp,
             p.max_mp,
+            meter(p.xp, p.xp_to_level, 8),
             p.xp,
             p.xp_to_level
         )
@@ -404,6 +426,35 @@ fn render_log(f: &mut Frame, area: Rect, state: &TuiState) {
 
 fn render_sidebar(f: &mut Frame, area: Rect, state: &TuiState) {
     let mut lines: Vec<Line> = Vec::new();
+
+    if !state.client.authenticated && state.client.auth_step == AuthStep::Class {
+        for line in class_select_text().lines().map(str::to_string) {
+            lines.push(Line::from(line));
+        }
+    } else if !state.client.authenticated {
+        lines.push(Line::from(Span::styled(
+            "REALM OF ECHOES",
+            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+        )));
+        lines.push(Line::from(""));
+        lines.push(Line::from("login    — return"));
+        lines.push(Line::from("register — new hero"));
+        lines.push(Line::from(""));
+        lines.push(Line::from("n s e w  move"));
+        lines.push(Line::from("l look  i inv"));
+    } else if let (
+        Some(target),
+        Some(hp),
+        Some(max_hp),
+    ) = (
+        state.combat_target.as_ref(),
+        state.combat_target_hp,
+        state.combat_target_max_hp,
+    ) {
+        lines.push(Line::from(Span::styled("Combat", Style::default().fg(Color::Red))));
+        lines.push(Line::from(combat_target_line(target, hp, max_hp)));
+        lines.push(Line::from(""));
+    }
 
     if let Some(room) = &state.room {
         if let Some(art) = &room.zone_art {
@@ -452,11 +503,6 @@ fn render_sidebar(f: &mut Frame, area: Rect, state: &TuiState) {
                 )));
             }
         }
-    } else {
-        lines.push(Line::from("REALM OF ECHOES"));
-        lines.push(Line::from(""));
-        lines.push(Line::from("login    — return"));
-        lines.push(Line::from("register — new hero"));
     }
 
     if !state.online.is_empty() {
@@ -545,12 +591,3 @@ fn wrap_text(text: &str, width: usize) -> Vec<String> {
     lines
 }
 
-#[allow(dead_code)]
-fn class_select_lines() -> Vec<Line<'static>> {
-    let mut lines = vec![Line::from("Choose your class:")];
-    for cls in CLASSES.values() {
-        lines.push(Line::from(format!("{} — {}", cls.name.as_str(), cls.display_name)));
-        lines.push(Line::from(cls.description.clone()));
-    }
-    lines
-}

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use realm_protocol::{OutputStyle, ServerMessage};
+use realm_protocol::{CombatSnapshot, OutputStyle, ServerMessage};
 
 use crate::achievement_service::{check_achievements, format_achievements, AchievementTriggers};
 use crate::combat::{
@@ -226,6 +226,9 @@ impl CommandHandler {
             minimap: Some(build_minimap(&self.world.rooms(), player.room_id())),
             zone_art: ZONE_ART.get(zone.as_str()).map(|s| s.to_string()),
         });
+        if player.in_combat() {
+            self.send_combat_snapshot(pk, players, cb);
+        }
     }
 
     fn move_dir(&self, pk: &str, players: &mut HashMap<String, PlayerSession>, dir: Direction, cb: &mut CommandCallbacks) {
@@ -406,6 +409,7 @@ impl CommandHandler {
             for msg in msgs { out(cb, pk, msg, OutputStyle::Death); }
             self.look(pk, players, cb);
         } else if result.mob_killed {
+            players.get_mut(pk).unwrap().combat_target = None;
             (cb.room_notify)(&room_id, &format!("{} slays {mob_name}!", players.get(pk).unwrap().username()), None);
             (cb.ticker)(&format!("{} slays {mob_name}", players.get(pk).unwrap().username()));
             if let Some(player) = players.get_mut(pk) {
@@ -415,6 +419,7 @@ impl CommandHandler {
         if let Some(player) = players.get(pk) {
             (cb.send)(pk, ServerMessage::Stats { player: player.to_snapshot(&self.world) });
         }
+        self.send_combat_snapshot(pk, players, cb);
     }
 
     fn attack_player(&mut self, pk: &str, def_key: &str, players: &mut HashMap<String, PlayerSession>, cb: &mut CommandCallbacks) {
@@ -467,6 +472,9 @@ impl CommandHandler {
             self.resolve_pvp_victory(pk, def_key, players, cb);
         } else if result.attacker_died {
             self.resolve_pvp_victory(def_key, pk, players, cb);
+        } else {
+            self.send_combat_snapshot(pk, players, cb);
+            self.send_combat_snapshot(def_key, players, cb);
         }
     }
 
@@ -499,6 +507,8 @@ impl CommandHandler {
         if let Some(w) = players.get(winner_key) {
             (cb.send)(winner_key, ServerMessage::Stats { player: w.to_snapshot(&self.world) });
         }
+        self.send_combat_snapshot(winner_key, players, cb);
+        self.send_combat_snapshot(loser_key, players, cb);
     }
 
     fn use_ability(&self, pk: &str, players: &mut HashMap<String, PlayerSession>, slot: u8, cb: &mut CommandCallbacks) {
@@ -514,6 +524,8 @@ impl CommandHandler {
                     for msg in &result.defender_messages { out(cb, &opp_key, msg.clone(), OutputStyle::Combat); }
                     (cb.flash)(pk, "yellow");
                     (cb.flash)(&opp_key, "yellow");
+                    self.send_combat_snapshot(pk, players, cb);
+                    self.send_combat_snapshot(&opp_key, players, cb);
                     return;
                 }
             }
@@ -548,6 +560,7 @@ impl CommandHandler {
         if let Some(p) = players.get(pk) {
             (cb.send)(pk, ServerMessage::Stats { player: p.to_snapshot(&self.world) });
         }
+        self.send_combat_snapshot(pk, players, cb);
     }
 
     fn get_item(&self, pk: &str, players: &mut HashMap<String, PlayerSession>, item_name: &str, cb: &mut CommandCallbacks) {
@@ -969,6 +982,50 @@ impl CommandHandler {
             }
         }
         None
+    }
+
+    fn send_combat_snapshot(
+        &self,
+        pk: &str,
+        players: &HashMap<String, PlayerSession>,
+        cb: &mut CommandCallbacks,
+    ) {
+        let Some(player) = players.get(pk) else {
+            return;
+        };
+
+        let state = if let Some(instance_id) = &player.combat_target {
+            let room_id = player.room_id();
+            self.world.get_room(room_id).and_then(|room| {
+                let mob = room.mobs.iter().find(|m| m.instance_id == *instance_id)?;
+                let mobs = self.world.mobs();
+                let tmpl = mobs.get(&mob.template_id)?;
+                Some(CombatSnapshot {
+                    in_combat: true,
+                    target: Some(tmpl.name.clone()),
+                    target_hp: Some(mob.hp),
+                    target_max_hp: Some(mob.max_hp),
+                })
+            })
+        } else if let Some(opp_key) = &player.pvp_target {
+            players.get(opp_key).map(|opp| CombatSnapshot {
+                in_combat: true,
+                target: Some(opp.username().to_string()),
+                target_hp: Some(opp.data.hp),
+                target_max_hp: Some(opp.data.max_hp),
+            })
+        } else {
+            None
+        };
+
+        let state = state.unwrap_or(CombatSnapshot {
+            in_combat: false,
+            target: None,
+            target_hp: None,
+            target_max_hp: None,
+        });
+
+        (cb.send)(pk, ServerMessage::Combat { state });
     }
 }
 

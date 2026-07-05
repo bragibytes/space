@@ -470,6 +470,25 @@ impl GameServer {
                 .await;
         }
 
+        let show_newbie_tip = {
+            let players = self.players.lock().await;
+            players
+                .get(key)
+                .map(|p| p.data.level == 1 && p.data.quests.is_empty())
+                .unwrap_or(false)
+        };
+        if show_newbie_tip {
+            self.send_to_key(
+                key,
+                ServerMessage::Output {
+                    text: "New adventurer? Captain Aldric stands in the square — type \"talk aldric\" for quests, then \"accept goblin_menace\". Head south into the Whispering Woods and \"attack goblin\".".into(),
+                    style: Some(OutputStyle::Quest),
+                },
+                false,
+            )
+            .await;
+        }
+
         self.broadcast_online().await;
         self.send_to_key(key, ServerMessage::Prompt { text: ">".into() }, false)
             .await;

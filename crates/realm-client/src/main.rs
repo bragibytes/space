@@ -2,6 +2,7 @@ mod app;
 mod config;
 mod plain;
 mod tui;
+mod ui;
 
 use std::io::IsTerminal;
 
