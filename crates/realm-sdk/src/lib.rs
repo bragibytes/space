@@ -1,29 +1,22 @@
-//! # Realm SDK
+//! # Creeps SDK
 //!
-//! Write colony AI in Rust, compile to WASM, upload to the server.
+//! Write colony AI in `~/.creeps/colony/src/lib.rs`. The game client watches that
+//! directory and hot-reloads WASM on every save.
 //!
 //! ```text
 //! rustup target add wasm32-unknown-unknown
-//! cargo build --release --target wasm32-unknown-unknown -p my-colony-ai
+//! code ~/.creeps/colony
+//! cargo run -p realm-game
 //! ```
-//!
-//! The host calls `realm_tick()` once per simulation tick with a fuel budget.
-//! Only sandboxed APIs are available — no filesystem, network, or threads.
 
-/// Opaque handle to the simulation context (implemented by the server host).
+/// Opaque handle to the simulation context (implemented by the game host).
 pub struct LordContext {
     _private: (),
 }
 
-/// Called by the server each tick. Return `false` to yield remaining CPU.
-#[no_mangle]
-pub extern "C" fn realm_tick() -> bool {
-    tick(&mut LordContext { _private: () })
-}
-
-/// Player logic entry point.
+/// Player logic entry point — implement this in your colony `lib.rs` and export
+/// via `realm_tick` (see `templates/colony/src/lib.rs`).
 pub fn tick(_ctx: &mut LordContext) -> bool {
-    // Default starter: do nothing (hardcoded harvest AI runs until player uploads code).
     true
 }
 

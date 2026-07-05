@@ -3,13 +3,17 @@ name = "realm-game"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Realm — Screeps-style colony game (Bevy client)"
+description = "Creeps — Screeps for Rust (Bevy client)"
 
 [[bin]]
 name = "realm-game"
 path = "src/main.rs"
 
 [dependencies]
+anyhow = { workspace = true }
 bevy = { version = "0.16", default-features = true }
+dirs = "6"
+notify = "8"
 realm-sim = { workspace = true }
 realm-protocol = { workspace = true }
+wasmtime = "28"

@@ -20,6 +20,26 @@ realm
 
 That's it. The client auto-connects to the live server — no URLs, no config files.
 
+## Program your creeps (local files)
+
+Your colony AI lives in a normal Rust project on disk — edit in VS Code, Zed, or any editor:
+
+```
+~/.creeps/colony/
+  Cargo.toml
+  src/lib.rs      ← your code; save to auto-rebuild
+```
+
+First run of `cargo run -p realm-game` creates this folder from the repo template. The game watches for saves, runs `cargo build --target wasm32-unknown-unknown`, and hot-reloads your WASM.
+
+Override the path with `CREEPS_COLONY_DIR=/path/to/my/colony`.
+
+```bash
+rustup target add wasm32-unknown-unknown
+code ~/.creeps/colony   # open in your editor
+cargo run -p realm-game
+```
+
 1. Run `realm`
 2. Type `register` to create a character (**warrior**, **mage**, or **rogue**), or `login` to return
 3. Type `help` in-game for commands
