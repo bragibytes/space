@@ -24,7 +24,7 @@ impl Default for GameConsole {
             input: String::new(),
             log: vec![
                 "Creeps console — type `help` for commands.".into(),
-                "Your main AI runs from ~/realm-source/ (F2 to change directory).".into(),
+                "Your main AI runs from ~/.creeps/colony/ (F2 to change directory).".into(),
             ],
             paused: false,
             pending_manual_tick: false,
@@ -167,7 +167,7 @@ fn execute_command(
         "source" | "setsource" => {
             let rest: String = parts.collect::<Vec<_>>().join(" ");
             if rest.is_empty() {
-                console_push(console, "Usage: source <path>  e.g. source ~/realm-source");
+                console_push(console, "Usage: source <path>  e.g. source ~/.creeps/colony");
             } else {
                 let path = expand_path(&rest);
                 match attach_source_dir(code, path.clone()) {

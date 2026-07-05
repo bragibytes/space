@@ -3,12 +3,10 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 
-const DEFAULT_SOURCE_DIR: &str = "realm-source";
-
-/// Default player source directory: `~/realm-source/`.
+/// Default player source directory: `~/.creeps/colony/`.
 pub fn default_source_dir() -> Result<PathBuf> {
     let home = dirs::home_dir().context("home directory")?;
-    Ok(home.join(DEFAULT_SOURCE_DIR))
+    Ok(home.join(".creeps").join("colony"))
 }
 
 fn config_dir() -> Result<PathBuf> {
@@ -41,12 +39,12 @@ pub fn save_source_dir(dir: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Resolve source dir: env `REALM_SOURCE_DIR` → legacy `CREEPS_COLONY_DIR` → saved UI path → `~/realm-source/`.
+/// Resolve source dir: env `CREEPS_COLONY_DIR` → `REALM_SOURCE_DIR` → saved UI path → `~/.creeps/colony/`.
 pub fn resolve_source_dir() -> Result<PathBuf> {
-    if let Ok(path) = std::env::var("REALM_SOURCE_DIR") {
+    if let Ok(path) = std::env::var("CREEPS_COLONY_DIR") {
         return Ok(PathBuf::from(path));
     }
-    if let Ok(path) = std::env::var("CREEPS_COLONY_DIR") {
+    if let Ok(path) = std::env::var("REALM_SOURCE_DIR") {
         return Ok(PathBuf::from(path));
     }
     if let Some(path) = load_saved_source_dir() {

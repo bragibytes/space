@@ -41,7 +41,7 @@ pub fn draw_source_settings(
 ) {
     let default_label = default_source_dir()
         .map(|p| p.display().to_string())
-        .unwrap_or_else(|_| "~/realm-source".into());
+        .unwrap_or_else(|_| "~/.creeps/colony".into());
 
     egui::TopBottomPanel::top("source_bar").show(contexts.ctx_mut().unwrap(), |ui| {
         ui.horizontal(|ui| {
@@ -95,10 +95,10 @@ pub fn draw_source_settings(
 
             ui.separator();
             ui.label("Tips:");
-            ui.label("• Use ~/realm-source/ or any path you prefer");
+            ui.label("• Default: ~/.creeps/colony/ — or any path you prefer");
             ui.label("• Folder needs Cargo.toml (created automatically if missing)");
             ui.label("• Press F2 to open this panel");
-            ui.label("• Env override: REALM_SOURCE_DIR");
+            ui.label("• Env override: CREEPS_COLONY_DIR");
         });
 
     if reset {
